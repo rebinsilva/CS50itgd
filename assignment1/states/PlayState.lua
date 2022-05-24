@@ -17,6 +17,8 @@ PIPE_HEIGHT = 288
 BIRD_WIDTH = 38
 BIRD_HEIGHT = 24
 
+pauseImage = love.graphics.newImage('pause.png')
+
 function PlayState:init()
     self.bird = Bird()
     self.pipePairs = {}
@@ -29,6 +31,20 @@ end
 
 function PlayState:update(dt)
     -- update timer for pipe spawning
+    if love.keyboard.wasPressed('p') then
+	gGamePaused = not gGamePaused
+	sounds['pause']:play()
+	if gGamePaused then
+	    love.audio.pause(sounds['music'])
+	else
+	    love.audio.play(sounds['music'])
+	end
+    end
+
+    if gGamePaused then
+	return
+    end
+
     self.timer = self.timer + dt
 
     -- spawn a new pipe pair every second and a half
@@ -44,7 +60,7 @@ function PlayState:update(dt)
         table.insert(self.pipePairs, PipePair(y))
 
         -- reset timer
-        self.timer = 0
+        self.timer = math.random(-10, 10)/20
     end
 
     -- for every pair of pipes..
@@ -110,6 +126,11 @@ function PlayState:render()
     love.graphics.print('Score: ' .. tostring(self.score), 8, 8)
 
     self.bird:render()
+
+    scale = 1/10
+    if gGamePaused then
+	love.graphics.draw(pauseImage, (VIRTUAL_WIDTH - scale*pauseImage:getWidth())/2, (VIRTUAL_HEIGHT - scale*pauseImage:getHeight())/2, 0, scale)
+    end
 end
 
 --[[
