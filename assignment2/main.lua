@@ -66,7 +66,8 @@ function love.load()
         ['paddles'] = GenerateQuadsPaddles(gTextures['main']),
         ['balls'] = GenerateQuadsBalls(gTextures['main']),
         ['bricks'] = GenerateQuadsBricks(gTextures['main']),
-        ['hearts'] = GenerateQuads(gTextures['hearts'], 10, 9)
+        ['hearts'] = GenerateQuads(gTextures['hearts'], 10, 9),
+        ['powerups'] = GenerateQuadsPowerUps(gTextures['main']),
     }
     
     -- initialize our virtual resolution, which will be rendered within our
@@ -93,8 +94,11 @@ function love.load()
         ['recover'] = love.audio.newSource('sounds/recover.wav', 'static'),
         ['high-score'] = love.audio.newSource('sounds/high_score.wav', 'static'),
         ['pause'] = love.audio.newSource('sounds/pause.wav', 'static'),
+	['power-up-fall'] = love.audio.newSource('sounds/no-select.wav', 'static'),
+	['power-up-catch'] = love.audio.newSource('sounds/confirm.wav', 'static'),
 
-        ['music'] = love.audio.newSource('sounds/music.wav', 'static')
+
+        ['music'] = love.audio.newSource('sounds/music.wav', 'static'),
     }
 
     -- the state machine we'll be using to transition between various states
@@ -220,7 +224,7 @@ function loadHighScores()
     love.filesystem.setIdentity('breakout')
 
     -- if the file doesn't exist, initialize it with some default scores
-    if not love.filesystem.exists('breakout.lst') then
+    if not love.filesystem.getInfo('breakout.lst') then
         local scores = ''
         for i = 10, 1, -1 do
             scores = scores .. 'CTO\n'
