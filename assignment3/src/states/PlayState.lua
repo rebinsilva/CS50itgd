@@ -61,7 +61,7 @@ function PlayState:enter(params)
     self.level = params.level
 
     -- spawn a board and place it toward the right
-    self.board = params.board or Board(VIRTUAL_WIDTH - 272, 16)
+    self.board = params.board or Board(VIRTUAL_WIDTH - 272, 16, self.level)
 
     -- grab score from params if it was passed
     self.score = params.score or 0
@@ -122,11 +122,23 @@ function PlayState:update(dt)
         end
 
         -- if we've pressed enter, to select or deselect a tile...
-        if love.keyboard.wasPressed('enter') or love.keyboard.wasPressed('return') then
+	mouseClicked = love.mouse.wasPressed()
+	if mouseClicked then
+	    mouseClickPos = toBoard(mouseClicked.x, mouseClicked.y)
+	    for _, coordinate in pairs(mouseClickPos) do
+		if coordinate < 1 or coordinate > 8 then
+		    mouseClicked = nil
+		    break
+		end
+		self.boardHighlightX = mouseClickPos.gridX - 1
+		self.boardHighlightY = mouseClickPos.gridY - 1
+	    end
+	end
+        if love.keyboard.wasPressed('enter') or love.keyboard.wasPressed('return') or mouseClicked then
             
             -- if same tile as currently highlighted, deselect
-            local x = self.boardHighlightX + 1
-            local y = self.boardHighlightY + 1
+            local x = (mouseClicked and mouseClickPos.gridX) or (self.boardHighlightX + 1)
+            local y = (mouseClicked and mouseClickPos.gridY) or (self.boardHighlightY + 1)
             
             -- if nothing is highlighted, highlight current tile
             if not self.highlightedTile then
@@ -144,15 +156,11 @@ function PlayState:update(dt)
             else
                 
                 -- swap grid positions of tiles
-                local tempX = self.highlightedTile.gridX
-                local tempY = self.highlightedTile.gridY
-
                 local newTile = self.board.tiles[y][x]
 
-                self.highlightedTile.gridX = newTile.gridX
-                self.highlightedTile.gridY = newTile.gridY
-                newTile.gridX = tempX
-                newTile.gridY = tempY
+                self.highlightedTile.gridX, newTile.gridX= newTile.gridX, self.highlightedTile.gridX
+                self.highlightedTile.gridY, newTile.gridY= newTile.gridY, self.highlightedTile.gridY
+
 
                 -- swap tiles in the tiles table
                 self.board.tiles[self.highlightedTile.gridY][self.highlightedTile.gridX] =
@@ -160,16 +168,30 @@ function PlayState:update(dt)
 
                 self.board.tiles[newTile.gridY][newTile.gridX] = newTile
 
-                -- tween coordinates between the two so they swap
-                Timer.tween(0.1, {
-                    [self.highlightedTile] = {x = newTile.x, y = newTile.y},
-                    [newTile] = {x = self.highlightedTile.x, y = self.highlightedTile.y}
-                })
-                
-                -- once the swap is finished, we can tween falling blocks as needed
-                :finish(function()
-                    self:calculateMatches()
-                end)
+		if not self.board:calculateMatches() then
+		    -- reset the swap
+		    self.highlightedTile.gridX, newTile.gridX= newTile.gridX, self.highlightedTile.gridX
+		    self.highlightedTile.gridY, newTile.gridY= newTile.gridY, self.highlightedTile.gridY
+
+
+		    self.board.tiles[self.highlightedTile.gridY][self.highlightedTile.gridX] =
+			self.highlightedTile
+
+		    self.board.tiles[newTile.gridY][newTile.gridX] = newTile
+		    gSounds['error']:play()
+		    self.highlightedTile = nil
+		else
+		    -- tween coordinates between the two so they swap
+		    Timer.tween(0.1, {
+			[self.highlightedTile] = {x = newTile.x, y = newTile.y},
+			[newTile] = {x = self.highlightedTile.x, y = self.highlightedTile.y}
+		    })
+		    
+		    -- once the swap is finished, we can tween falling blocks as needed
+		    :finish(function()
+			self:calculateMatches()
+		    end)
+		end
             end
         end
     end
@@ -196,27 +218,65 @@ function PlayState:calculateMatches()
         -- add score for each match
         for k, match in pairs(matches) do
             self.score = self.score + #match * 50
+	    self.timer = self.timer + 1
         end
 
         -- remove any tiles that matched from the board, making empty spaces
-        self.board:removeMatches()
+        removed = self.board:removeMatches()
+
+	for _, tile in ipairs(removed) do
+	    self.score = self.score + 20*tile.variety
+	end
+	removed = nil
 
         -- gets a table with tween values for tiles that should now fall
         local tilesToFall = self.board:getFallingTiles()
 
-        -- tween new tiles that spawn from the ceiling over 0.25s to fill in
-        -- the new upper gaps that exist
-        Timer.tween(0.25, tilesToFall):finish(function()
-            
-            -- recursively call function in case new matches have been created
-            -- as a result of falling blocks once new blocks have finished falling
-            self:calculateMatches()
-        end)
+	if self.board:checkBoard() then 
+	    -- tween new tiles that spawn from the ceiling over 0.25s to fill in
+	    -- the new upper gaps that exist
+	    Timer.tween(0.25, tilesToFall):finish(function()
+		
+		-- recursively call function in case new matches have been created
+		-- as a result of falling blocks once new blocks have finished falling
+		self:calculateMatches()
+	    end)
+	else
+	    self:resetBoard()
+	end
     
     -- if no matches, we can continue playing
     else
         self.canInput = true
     end
+end
+
+function toGrid(gridX, gridY)
+    local area = 32*32
+    return {x = (gridX - 1) * 32 + (VIRTUAL_WIDTH - 272), y = (gridY - 1) * 32 + 16}
+end
+
+function toBoard(x, y)
+    local gridX = math.floor(1 + (x - (VIRTUAL_WIDTH - 272))/32)
+    local gridY = math.floor(1 + (y - 16)/32)
+    return {gridX = gridX, gridY = gridY}
+end
+
+function PlayState:resetBoard()
+    self.board = Board(self.board.x, self.board.y, self.board.level)
+    tweens = {}
+    for x = 1, 8 do
+        for y = 1, 8 do
+            local tile = self.board.tiles[y][x]
+	    tile.y = -32
+	    tweens[tile] = {
+		y = (tile.gridY - 1) * 32
+	    }
+	end
+    end
+    
+    -- let the all the tiles of the new board fall
+    Timer.tween(0.25, tweens)
 end
 
 function PlayState:render()

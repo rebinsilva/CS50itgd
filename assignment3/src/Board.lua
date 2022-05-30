@@ -13,15 +13,16 @@
 
 Board = Class{}
 
-function Board:init(x, y)
+function Board:init(x, y, level)
     self.x = x
     self.y = y
     self.matches = {}
 
+    self.level = level
     self:initializeTiles()
 end
 
-function Board:initializeTiles()
+function Board:initializeTiles(l)
     self.tiles = {}
 
     for tileY = 1, 8 do
@@ -32,11 +33,11 @@ function Board:initializeTiles()
         for tileX = 1, 8 do
             
             -- create a new tile at X,Y with a random color and variety
-            table.insert(self.tiles[tileY], Tile(tileX, tileY, math.random(18), math.random(6)))
+            table.insert(self.tiles[tileY], Tile(tileX, tileY, math.random(18), math.random(math.min(6, self.level))))
         end
     end
 
-    while self:calculateMatches() do
+    while self:calculateMatches()  or (not self:checkBoard()) do
         
         -- recursively initialize if matches were returned so we always have
         -- a matchless board on start
@@ -166,13 +167,31 @@ end
     them to nil, then setting self.matches to nil.
 ]]
 function Board:removeMatches()
+    removed = {}
+    rows = {}
     for k, match in pairs(self.matches) do
         for k, tile in pairs(match) do
+	    if self.tiles[tile.gridY][tile.gridX] then
+		table.insert(removed, self.tiles[tile.gridY][tile.gridX])
+	    end
             self.tiles[tile.gridY][tile.gridX] = nil
+	    if tile.shiny then
+		rows[tile.gridY] = true
+	    end
         end
     end
 
+    for row, _ in pairs(rows) do
+	for tileX = 1, 8 do
+	    if self.tiles[row][tileX] then
+		table.insert(removed,  self.tiles[row][tileX])
+	    end
+	    self.tiles[row][tileX] = nil
+	end
+    end
+
     self.matches = nil
+    return removed
 end
 
 --[[
@@ -240,7 +259,7 @@ function Board:getFallingTiles()
             if not tile then
 
                 -- new tile with random color and variety
-                local tile = Tile(x, y, math.random(18), math.random(6))
+                local tile = Tile(x, y, math.random(18), math.random(math.min(6, self.level)))
                 tile.y = -32
                 self.tiles[y][x] = tile
 
@@ -253,6 +272,77 @@ function Board:getFallingTiles()
     end
 
     return tweens
+end
+
+function checkHorizontal(tiles, gridX, gridY)
+    if gridY <= 0 or gridY >= 9 then
+	return false
+    end
+    if gridX <= 1 or gridX >= 8 then
+	return false
+    end
+    if tiles[gridY][gridX].color == tiles[gridY][gridX-1].color and tiles[gridY][gridX].color == tiles[gridY][gridX+1].color then
+	return true
+    end
+end
+
+function checkVertical(tiles, gridX, gridY)
+    if gridY <= 1 or gridY >= 8 then
+	return false
+    end
+    if gridX <= 0 or gridX >= 9 then
+	return false
+    end
+    if tiles[gridY][gridX].color == tiles[gridY-1][gridX].color and tiles[gridY][gridX].color == tiles[gridY+1][gridX].color then
+	return true
+    end
+    return false
+end
+
+function Board:checkCell(gridX, gridY)
+    local tiles = self.tiles
+    local check = false
+    newPosits = {{gridX+1, gridY}, {gridX, gridY-1}, {gridX-1, gridY}, {gridX, gridY+1}}
+    for _, newPos in ipairs(newPosits) do
+	newX, newY = newPos[1], newPos[2]
+	if newX <= 0 or newX >= 9 or newY <= 0 or newY >=9 then
+	    goto continue
+	end
+	tiles[gridY][gridX].color, tiles[newY][newX].color  = tiles[newY][newX].color, tiles[gridY][gridX].color
+
+	check = check or checkHorizontal(tiles, newX, newY)
+	check = check or checkVertical(tiles, newX, newY)
+	check = check or checkHorizontal(tiles, newX+1, newY)
+	check = check or checkHorizontal(tiles, newX-1, newY)
+	check = check or checkVertical(tiles, newX, newY-1)
+	check = check or checkVertical(tiles, newX, newY+1)
+
+	-- reset the color
+	tiles[gridY][gridX].color, tiles[newY][newX].color  = tiles[newY][newX].color, tiles[gridY][gridX].color
+
+	if check then
+	    print(gridX, gridY)
+	    break
+	end
+	::continue::
+    end
+    return check
+end
+
+function Board:checkBoard()
+    local matchExists = false
+    for gridX = 1, 8 do
+	for gridY = 1, 8 do
+	    matchExists = matchExists or self:checkCell(gridX, gridY)
+	    if matchExists then
+		break
+	    end
+	end
+	if matchExists then
+	    break
+	end
+    end
+    return matchExists
 end
 
 function Board:render()
