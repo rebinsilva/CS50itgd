@@ -6,9 +6,9 @@
     cogden@cs50.harvard.edu
 ]]
 
-PlayerWalkState = Class{__includes = EntityWalkState}
+PlayerPotWalkState = Class{__includes = EntityWalkState}
 
-function PlayerWalkState:init(player, dungeon)
+function PlayerPotWalkState:init(player, dungeon)
     self.entity = player
     self.dungeon = dungeon
 
@@ -17,45 +17,34 @@ function PlayerWalkState:init(player, dungeon)
     self.entity.offsetX = 0
 end
 
-function PlayerWalkState:update(dt)
+function PlayerPotWalkState:enter(params)
+    self.pot = params.pot
+end
+
+function PlayerPotWalkState:update(dt)
     if love.keyboard.isDown('left') then
         self.entity.direction = 'left'
-        self.entity:changeAnimation('walk-left')
+        self.entity:changeAnimation('walk-pot-left')
     elseif love.keyboard.isDown('right') then
         self.entity.direction = 'right'
-        self.entity:changeAnimation('walk-right')
+        self.entity:changeAnimation('walk-pot-right')
     elseif love.keyboard.isDown('up') then
         self.entity.direction = 'up'
-        self.entity:changeAnimation('walk-up')
+        self.entity:changeAnimation('walk-pot-up')
     elseif love.keyboard.isDown('down') then
         self.entity.direction = 'down'
-        self.entity:changeAnimation('walk-down')
+        self.entity:changeAnimation('walk-pot-down')
     else
-        self.entity:changeState('idle')
+        self.entity:changeState('idle-pot', {pot=self.pot})
     end
 
-    if love.keyboard.wasPressed('space') then
+    if love.keyboard.wasPressed('enter') then
         self.entity:changeState('swing-sword')
     end
 
     -- perform base collision detection against walls
     EntityWalkState.update(self, dt)
 
-    if love.keyboard.wasPressed('enter') or love.keyboard.wasPressed('return') then
-	for k, object in pairs(self.dungeon.currentRoom.objects) do
-	    if object.type == 'pot' then
-		if self.entity.direction == 'right' and self.entity.x <= object.x and self.entity.x + self.entity.width >= object.x then
-		    self.entity.x = object.x - self.entity.width
-		elseif self.entity.direction == 'left' and self.entity.x <= object.x + object.width and self.entity.x + self.entity.width >= object.x + object.width then
-		    self.entity.x = object.x + object.width
-		elseif self.entity.direction == 'down' and self.entity.y <= object.y and self.entity.y + self.entity.height >= object.y then
-		    self.entity.y = object.y - self.entity.height
-		elseif self.entity.direction == 'up' and self.entity.y <= object.y + object.height and self.entity.y + self.entity.height >= object.y + object.height then
-		    self.entity.y = object.y + object.height
-		end
-	    end
-	end
-    end
 
     -- if we bumped something when checking collision, check any object collisions
     if self.bumped then
@@ -129,4 +118,22 @@ function PlayerWalkState:update(dt)
             self.entity.y = self.entity.y - PLAYER_WALK_SPEED * dt
         end
     end
+    self.pot.x = self.entity.x -- -math.floor(self.entity.width/2)
+    self.pot.y = self.entity.y -- -math.floor(self.entity.height/2)
 end
+
+function PlayerPotWalkState:render()
+    local anim = self.entity.currentAnimation
+    love.graphics.draw(gTextures[anim.texture], gFrames[anim.texture][anim:getCurrentFrame()],
+	math.floor(self.entity.x - self.entity.offsetX), math.floor(self.entity.y - self.entity.offsetY))
+    love.graphics.setColor(1, 1, 1, 192/255)
+    love.graphics.draw(gTextures[self.pot.texture], gFrames[self.pot.texture][self.pot.frame],
+        self.pot.x, self.pot.y)
+    love.graphics.setColor(1, 1, 1, 1)
+    
+    -- debug code
+    -- love.graphics.setColor(255, 0, 255, 255)
+    -- love.graphics.rectangle('line', self.entity.x, self.entity.y, self.entity.width, self.entity.height)
+    -- love.graphics.setColor(255, 255, 255, 255)
+end
+

@@ -12,6 +12,14 @@ function Room:init(player)
     self.width = MAP_WIDTH
     self.height = MAP_HEIGHT
 
+    -- used for centering the dungeon rendering
+    self.renderOffsetX = MAP_RENDER_OFFSET_X
+    self.renderOffsetY = MAP_RENDER_OFFSET_Y
+
+    -- used for drawing when this room is the next room, adjacent to the active
+    self.adjacentOffsetX = 0
+    self.adjacentOffsetY = 0
+
     self.tiles = {}
     self:generateWallsAndFloors()
 
@@ -21,6 +29,7 @@ function Room:init(player)
 
     -- game objects in the room
     self.objects = {}
+    self.projectiles = {}
     self:generateObjects()
 
     -- doorways that lead to other dungeon rooms
@@ -32,14 +41,6 @@ function Room:init(player)
 
     -- reference to player for collisions, etc.
     self.player = player
-
-    -- used for centering the dungeon rendering
-    self.renderOffsetX = MAP_RENDER_OFFSET_X
-    self.renderOffsetY = MAP_RENDER_OFFSET_Y
-
-    -- used for drawing when this room is the next room, adjacent to the active
-    self.adjacentOffsetX = 0
-    self.adjacentOffsetY = 0
 end
 
 --[[
@@ -102,8 +103,25 @@ function Room:generateObjects()
         end
     end
 
+
     -- add to list of objects in scene (only one switch for now)
     table.insert(self.objects, switch)
+
+
+    for y = 2, self.height-1 do
+	for x = 2, self.width-1 do
+	    if math.random(100) < 5 then
+		local pot = GameObject(
+		    GAME_OBJECT_DEFS['pot'],
+		    (x - 1) * TILE_SIZE + self.renderOffsetX + self.adjacentOffsetX, 
+		    (y - 1) * TILE_SIZE + self.renderOffsetY + self.adjacentOffsetY
+		)
+		pot.onCollide = function()
+		end
+		table.insert(self.objects, pot)
+	    end
+	end
+    end
 end
 
 --[[
@@ -157,8 +175,27 @@ function Room:update(dt)
         local entity = self.entities[i]
 
         -- remove entity from the table if health is <= 0
-        if entity.health <= 0 then
+        if (not entity.dead) and entity.health <= 0 then
             entity.dead = true
+
+	    if math.random(100) < 20 then
+
+		local heart = GameObject(
+		    GAME_OBJECT_DEFS['heart'], entity.x, entity.y
+		)
+
+		heart.onCollide = function()
+			self.player:damage(-1)
+			gSounds['door']:play()
+			for i, h in ipairs(self.objects) do
+			    if h == heart then
+				table.remove(self.objects, i)
+				break
+			    end
+			end
+		    end
+		table.insert(self.objects, heart)
+	    end
         elseif not entity.dead then
             entity:processAI({room = self}, dt)
             entity:update(dt)
@@ -174,6 +211,16 @@ function Room:update(dt)
                 gStateMachine:change('game-over')
             end
         end
+	for i = #self.projectiles, 1, -1 do
+	    local projectile = self.projectiles[i]
+	    if (not projectile.dead) and projectile:collides(entity) then
+		projectile.onCollide(entity)
+		projectile.dead = true
+	    end
+	    if projectile.dead then
+		table.remove(self.projectiles, i)
+	    end
+	end
     end
 
     for k, object in pairs(self.objects) do
@@ -181,8 +228,23 @@ function Room:update(dt)
 
         -- trigger collision callback on object
         if self.player:collides(object) then
+	    if object.solid then
+		if self.player.x <= object.x and self.player.x + self.player.width >= object.x then
+		    self.player.x = object.x - self.player.width
+		elseif self.player.x <= object.x + object.width and self.player.x + self.player.width >= object.x + object.width then
+		    self.player.x = object.x + object.width
+		elseif self.player.y <= object.y and self.player.y + self.player.height >= object.y then
+		    self.player.y = object.y - self.player.height
+		elseif self.player.y <= object.y + object.height and self.player.y + self.player.height >= object.y + object.height then
+		    self.player.y = object.y + object.height
+		end
+	    end
             object:onCollide()
         end
+    end
+
+    for _, projectile in ipairs(self.projectiles) do
+	projectile:update(dt)
     end
 end
 
@@ -204,6 +266,10 @@ function Room:render()
 
     for k, object in pairs(self.objects) do
         object:render(self.adjacentOffsetX, self.adjacentOffsetY)
+    end
+
+    for k, projectile in pairs(self.projectiles) do
+	projectile:render(self.adjacentOffsetX, self.adjacentOffsetY)
     end
 
     for k, entity in pairs(self.entities) do
